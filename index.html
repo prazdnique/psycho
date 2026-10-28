@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Дневник состояния</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#eef2f1;--cell:#fbfcfb;--ink:#1d2a2f;--mut:#617074;--line:#cbd6d4;--acc:#2f7d79;--warn:#c4622d;--on:#fff;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111819;--cell:#192223;--ink:#e6eeed;--mut:#8fa1a3;--line:#2e3c3e;--acc:#5fb8b2;--warn:#e8905f;--on:#0d1516}}
+:root[data-theme="dark"]{--bg:#111819;--cell:#192223;--ink:#e6eeed;--mut:#8fa1a3;--line:#2e3c3e;--acc:#5fb8b2;--warn:#e8905f;--on:#0d1516}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:12px 12px 40px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button,.bar button,.bar input,.seg button,.act{font:inherit;color:var(--ink);background:var(--cell);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+.tabs button{flex:1}
+.tabs button.on,.seg button.on{background:var(--acc);border-color:var(--acc);color:var(--on)}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.bar input{flex:1;min-width:140px;cursor:text}
+.seg{display:flex;gap:6px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.c{background:var(--cell);padding:14px;display:flex;flex-direction:column;gap:10px;min-height:150px}
+.c.w{grid-column:span 2}
+@media (max-width:620px){.c.w{grid-column:auto}}
+h2{font-size:1rem;font-weight:600;margin:0}
+.hint,.leg{color:var(--mut);font-size:.82rem;margin:-6px 0 0}
+.leg span{margin-right:10px}
+label{font-size:.88rem;color:var(--mut);display:block}
+.r{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 8px}
+.r input{grid-column:1/3;width:100%;accent-color:var(--acc)}
+textarea,input[type=number]{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px}
+textarea{min-height:64px;resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font:inherit;font-size:.86rem;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer}
+.chips button.on{background:var(--acc);border-color:var(--acc);color:var(--on)}
+.chk{display:flex;gap:8px;align-items:center;font-size:.92rem;color:var(--ink)}
+.chk input{width:18px;height:18px;accent-color:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+td,th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left;font-weight:400}
+th{color:var(--mut)}
+ul{margin:0;padding-left:18px;font-size:.92rem}
+li{margin-bottom:4px}
+.m{color:var(--mut);font-size:.82rem;margin:0}
+#sum{min-height:200px;font-size:.88rem}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:8px;font-size:.9rem}
+#sit{display:flex;flex-direction:column;gap:10px}
+.sit{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.sit input[type=text]{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:8px}
+.del{align-self:flex-start;font-size:.85rem;padding:4px 10px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<div class="tabs"><button id="t1" class="on">Запись</button><button id="t2">Анализ</button></div>
+<p id="load">Загрузка…</p>
+
+<div id="pg1" hidden>
+<div class="bar">
+<button id="prev" aria-label="Предыдущий день">←</button>
+<input type="date" id="d" aria-label="Дата">
+<button id="next" aria-label="Следующий день">→</button>
+<button id="tod">Сегодня</button>
+</div>
+<div class="grid" id="form"></div>
+</div>
+
+<div id="pg2" hidden>
+<div class="seg" id="seg"><button data-n="14">14 дней</button><button data-n="30" class="on">30 дней</button><button data-n="90">90 дней</button></div>
+<div class="grid" id="an"></div>
+</div>
+</main>
+<div id="toast" hidden></div>
+
+<script>
+(function(){
+var tg=window.Telegram&&window.Telegram.WebApp;
+var cloud=(tg&&tg.initData&&tg.CloudStorage)?tg.CloudStorage:null;
+try{if(tg){tg.ready();tg.expand();if(tg.colorScheme)document.documentElement.setAttribute("data-theme",tg.colorScheme)}}catch(e){}
+
+function $(s){return document.querySelector(s)}
+function all(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
+function fmt(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function note(t){var n=$("#toast");n.textContent=t;n.hidden=false;clearTimeout(note.t);note.t=setTimeout(function(){n.hidden=true},2500)}
+
+var KEY="diary-v1",db={},date=fmt(new Date()),timers={};
+
+/* ---------- хранилище ---------- */
+function loadAll(cb){
+ if(cloud){
+  cloud.getKeys(function(err,keys){
+   keys=(keys||[]).filter(function(k){return k.indexOf("d:")===0});
+   if(err||!keys.length){cb();return}
+   cloud.getItems(keys,function(err2,vals){
+    if(!err2&&vals){Object.keys(vals).forEach(function(k){try{db[k.slice(2)]=JSON.parse(vals[k])}catch(e){}})}
+    cb();
+   });
+  });
+ }else{
+  try{db=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){db={}}
+  cb();
+ }
+}
+function saveDay(d){
+ if(cloud){
+  var s=JSON.stringify(db[d]||{});
+  if(s.length>4000){note("Запись слишком длинная, сократите тексты");return}
+  cloud.setItem("d:"+d,s,function(){});
+ }else{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+}
+function put(k,v){
+ var d=date,e=db[d]=db[d]||{};
+ e[k]=v;
+ clearTimeout(timers[d]);
+ timers[d]=setTimeout(function(){saveDay(d)},500);
+}
+document.addEventListener("visibilitychange",function(){
+ if(document.hidden)Object.keys(timers).forEach(function(d){clearTimeout(timers[d]);saveDay(d)});
+});
+
+/* ---------- форма ---------- */
+var CARDS=[
+{t:"Настроение и тревога",h:"0 — очень плохо или нет вообще, 10 — отлично или максимум",f:[["r","mood","Настроение"],["r","anx","Тревога"],["r","en","Энергия"]]},
+{t:"Эмоции дня",h:"Отметьте всё, что было",f:[["c","emo",["тревога","грусть","злость","раздражение","стыд","вина","пустота","страх","апатия","спокойствие","радость","интерес"]]]},
+{t:"Тело и сон",f:[["n","sleep","Сколько часов спал"],["c","body",["сердцебиение","напряжение в мышцах","головная боль","ком в горле","одышка","тошнота","усталость","плохой аппетит","переедание","плохой сон"]]]},
+{t:"Тревога: что запустило и что было дальше",w:1,f:[["t","trig","Что случилось или что запустило тревогу"],["t","thought","Какая мысль была в голове"],["t","react","Что я сделал в ответ"]]},
+{t:"Ситуации дня",w:1,h:"Моменты, когда было страшно или неловко: не решился заговорить, не подошёл, промолчал. До 6 в день",f:[["s"]]},
+{t:"Отношения и общение",f:[["c","rel",["общался с близкими","одиночество","избегал людей","конфликт","получил поддержку","новое знакомство"]],["t","reln","Как это было"]]},
+{t:"Дело, музыка, деньги",f:[["c","work",["поработал над музыкой","прокрастинация","сомнения в себе","тревога из-за денег","чувство прогресса"]],["t","workn","Что сделал или что мешало"]]},
+{t:"Быт и переезд",f:[["c","life",["жильё","документы","язык и адаптация","тоска по дому","нет режима","чувствую себя на месте"]],["t","lifen","Что давило или помогало"]]},
+{t:"Привычки",f:[["k","h_out","Выходил на улицу"],["k","h_move","Двигался, спорт, прогулка"],["k","h_eat","Нормально ел"],["k","h_caf","Много кофеина"],["k","h_alc","Алкоголь"],["k","h_scr","Долго сидел в играх или экране"],["k","h_med","Принял назначенные лекарства"]]},
+{t:"Что получилось хорошо",h:"Даже мелочь",f:[["t","good",""]]},
+{t:"Вопросы к терапевту и заметки",w:1,h:"Всё, что хочется обсудить на приёме",f:[["t","ask",""]]}
+];
+function build(){
+ var h="";
+ CARDS.forEach(function(c){
+  h+='<section class="c'+(c.w?' w':'')+'"><h2>'+c.t+'</h2>'+(c.h?'<p class="hint">'+c.h+'</p>':'');
+  c.f.forEach(function(f){
+   var t=f[0],k=f[1],x=f[2];
+   if(t==="r")h+='<div class="r"><label for="i_'+k+'">'+x+'</label><b data-o="'+k+'">–</b><input type="range" id="i_'+k+'" min="0" max="10" data-k="'+k+'"></div>';
+   else if(t==="n")h+='<label for="i_'+k+'">'+x+'</label><input type="number" id="i_'+k+'" min="0" max="24" step="0.5" inputmode="decimal" data-k="'+k+'">';
+   else if(t==="t")h+=(x?'<label for="i_'+k+'">'+x+'</label>':'')+'<textarea id="i_'+k+'" maxlength="300" data-k="'+k+'"></textarea>';
+   else if(t==="s")h+='<div id="sit"></div><button type="button" class="act" id="addsit">+ Добавить ситуацию</button>';
+   else if(t==="k")h+='<label class="chk"><input type="checkbox" data-k="'+k+'">'+x+'</label>';
+   else h+='<div class="chips" data-k="'+k+'">'+x.map(function(v){return '<button type="button" data-v="'+v+'">'+v+'</button>'}).join("")+'</div>';
+  });
+  h+='</section>';
+ });
+ $("#form").innerHTML=h;
+}
+function out(k,v){var o=$('[data-o="'+k+'"]');if(o)o.textContent=(typeof v==="number")?v:"–"}
+function load(){
+ var e=db[date]||{};
+ $("#d").value=date;
+ all("#form [data-k]").forEach(function(el){
+  var k=el.getAttribute("data-k");
+  if(el.classList.contains("chips")){
+   var a=e[k]||[];
+   el.querySelectorAll("button").forEach(function(b){b.classList.toggle("on",a.indexOf(b.getAttribute("data-v"))>-1)});
+  }else if(el.type==="checkbox"){el.checked=!!e[k]}
+  else if(el.type==="range"){el.value=(typeof e[k]==="number")?e[k]:5;out(k,e[k])}
+  else{el.value=(e[k]!==undefined)?e[k]:""}
+ });
+ renderSit();
+}
+document.addEventListener("input",function(ev){
+ var el=ev.target,k=el.getAttribute&&el.getAttribute("data-k");
+ if(!k||el.classList.contains("chips"))return;
+ var v;
+ if(el.type==="checkbox")v=el.checked;
+ else if(el.type==="range"){v=+el.value;out(k,v)}
+ else if(el.type==="number"){v=el.value===""?"":parseFloat(el.value)}
+ else v=el.value;
+ put(k,v);
+});
+document.addEventListener("click",function(ev){
+ var b=ev.target.closest&&ev.target.closest(".chips button");
+ if(!b)return;
+ var box=b.parentNode,k=box.getAttribute("data-k");
+ if(!k)return;
+ b.classList.toggle("on");
+ put(k,Array.prototype.slice.call(box.querySelectorAll("button.on")).map(function(x){return x.getAttribute("data-v")}));
+});
+function shift(n){var p=date.split("-");date=fmt(new Date(+p[0],+p[1]-1,+p[2]+n));load()}
+$("#prev").onclick=function(){shift(-1)};
+$("#next").onclick=function(){shift(1)};
+$("#tod").onclick=function(){date=fmt(new Date());load()};
+$("#d").onchange=function(){if(this.value){date=this.value;load()}};
+
+/* ---------- ситуации ---------- */
+var CATS=["подойти к человеку","сказать своё мнение","попросить о чём-то","незнакомое место","работа, музыка","деньги","другое"];
+var OUTS=["избежал","сделал через страх","сделал спокойно"];
+function sitArr(){var e=db[date]=db[date]||{};return e.sit=e.sit||[]}
+function chipsHtml(f,arr){return '<div class="chips" data-s="'+f+'">'+arr.map(function(v){return '<button type="button" data-v="'+v+'">'+v+'</button>'}).join("")+'</div>'}
+function renderSit(){
+ var a=(db[date]&&db[date].sit)||[],h="";
+ a.forEach(function(s,i){
+  h+='<div class="sit" data-i="'+i+'"><input type="text" maxlength="100" placeholder="Например: не решился подойти и заговорить" aria-label="Ситуация" data-s="t">'
+   +'<div class="r"><label>Страх, тревога</label><b>'+(typeof s.l==="number"?s.l:"–")+'</b><input type="range" min="0" max="10" data-s="l" aria-label="Уровень страха"></div>'
+   +'<label>Что за ситуация</label>'+chipsHtml("c",CATS)
+   +'<label>Чем закончилось</label>'+chipsHtml("r",OUTS)
+   +'<button type="button" class="act del" data-del="'+i+'">Удалить</button></div>';
+ });
+ $("#sit").innerHTML=h;
+ all("#sit .sit").forEach(function(el){
+  var s=a[+el.getAttribute("data-i")];
+  el.querySelector('input[type=text]').value=s.t||"";
+  el.querySelector('input[type=range]').value=(typeof s.l==="number")?s.l:5;
+  ["c","r"].forEach(function(f){el.querySelectorAll('[data-s="'+f+'"] button').forEach(function(b){b.classList.toggle("on",s[f]===b.getAttribute("data-v"))})});
+ });
+ $("#addsit").hidden=a.length>=6;
+}
+document.addEventListener("input",function(ev){
+ var el=ev.target,box=el.closest&&el.closest(".sit");
+ if(!box||!el.getAttribute("data-s"))return;
+ var it=sitArr()[+box.getAttribute("data-i")];
+ if(!it)return;
+ if(el.type==="range"){it.l=+el.value;box.querySelector("b").textContent=it.l}
+ else it.t=el.value;
+ put("sit",db[date].sit);
+});
+document.addEventListener("click",function(ev){
+ var t=ev.target,box=t.closest&&t.closest(".sit");
+ if(t.id==="addsit"){sitArr().push({});put("sit",db[date].sit);renderSit();var x=all("#sit .sit input[type=text]");if(x.length)x[x.length-1].focus();return}
+ if(!box)return;
+ var i=+box.getAttribute("data-i"),a=sitArr();
+ if(t.getAttribute("data-del")!==null){a.splice(i,1);put("sit",a);renderSit();return}
+ var b=t.closest(".chips button");
+ if(!b||!a[i])return;
+ var f=b.parentNode.getAttribute("data-s"),v=b.getAttribute("data-v");
+ a[i][f]=(a[i][f]===v)?undefined:v;
+ b.parentNode.querySelectorAll("button").forEach(function(x){x.classList.toggle("on",a[i][f]===x.getAttribute("data-v"))});
+ put("sit",a);
+});
+
+/* ---------- анализ ---------- */
+var span=30;
+function range(n){var r=[],t=new Date();for(var i=n-1;i>=0;i--)r.push(fmt(new Date(t.getFullYear(),t.getMonth(),t.getDate()-i)));return r}
+function num(v){return typeof v==="number"&&!isNaN(v)}
+function avg(a){return a.length?a.reduce(function(s,x){return s+x},0)/a.length:null}
+function f1(x){return x===null?"–":String(Math.round(x*10)/10).replace(".",",")}
+function vals(days,k){return days.map(function(d){return db[d]&&db[d][k]}).filter(num)}
+function esc(x){return String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function sitStats(sits){
+ var o={};
+ OUTS.forEach(function(x){o[x]=sits.filter(function(s){return s.r===x}).length});
+ var bycat=CATS.map(function(c){var a=sits.filter(function(s){return s.c===c});return {c:c,n:a.length,av:a.filter(function(s){return s.r===OUTS[0]}).length}}).filter(function(x){return x.n}).sort(function(a,b){return b.n-a.n});
+ var hard=sits.filter(function(s){return num(s.l)}).sort(function(a,b){return b.l-a.l}).slice(0,3);
+ return {n:sits.length,avgl:avg(sits.map(function(s){return s.l}).filter(num)),o:o,bycat:bycat,hard:hard};
+}
+function dm(d){var p=d.split("-");return p[2]+"."+p[1]}
+function top(days,keys,n){
+ var c={};
+ days.forEach(function(d){var e=db[d];if(!e)return;keys.forEach(function(k){(e[k]||[]).forEach(function(v){c[v]=(c[v]||0)+1})})});
+ return Object.keys(c).sort(function(a,b){return c[b]-c[a]}).slice(0,n).map(function(v){return v+" — "+c[v]+" дн."});
+}
+var FACT=[["h_out","выходил на улицу"],["h_move","двигался"],["h_eat","нормально ел"],["h_caf","пил много кофеина"],["h_alc","пил алкоголь"],["h_scr","долго сидел в играх или экране"],["h_med","принимал назначенные лекарства"]];
+function corr(days){
+ var r=[],ds=days.filter(function(d){return db[d]&&num(db[d].anx)});
+ FACT.forEach(function(f){
+  var y=[],n=[];
+  ds.forEach(function(d){(db[d][f[0]]?y:n).push(db[d].anx)});
+  if(y.length>=3&&n.length>=3)r.push("Тревога в дни, когда "+f[1]+": "+f1(avg(y))+" ("+y.length+" дн.), в остальные дни: "+f1(avg(n))+" ("+n.length+" дн.)");
+ });
+ var lo=[],hi=[];
+ ds.forEach(function(d){var s=db[d].sleep;if(num(s))(s<6?lo:hi).push(db[d].anx)});
+ if(lo.length>=3&&hi.length>=3)r.push("Тревога после сна меньше 6 часов: "+f1(avg(lo))+" ("+lo.length+" дн.), после 6 часов и больше: "+f1(avg(hi))+" ("+hi.length+" дн.)");
+ return r;
+}
+function monday(d){var p=d.split("-"),x=new Date(+p[0],+p[1]-1,+p[2]);x.setDate(x.getDate()-((x.getDay()+6)%7));return fmt(x)}
+function weeks(days){
+ var g={};
+ days.forEach(function(d){var e=db[d];if(!e)return;var m=monday(d);(g[m]=g[m]||[]).push(e)});
+ return Object.keys(g).sort().reverse().slice(0,8).map(function(m){
+  var a=g[m],mo=a.map(function(e){return e.mood}).filter(num),an=a.map(function(e){return e.anx}).filter(num),sl=a.map(function(e){return e.sleep}).filter(num);
+  return {m:m,n:Math.max(mo.length,an.length),mo:avg(mo),an:avg(an),sl:avg(sl)};
+ }).filter(function(w){return w.n>0});
+}
+function chart(days){
+ var W=320,H=140,pl=22,pr=6,pt=8,pb=18,n=days.length;
+ function X(i){return pl+(n<2?0:i*(W-pl-pr)/(n-1))}
+ function Y(v){return pt+(10-v)*(H-pt-pb)/10}
+ var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="График настроения и тревоги">';
+ [0,5,10].forEach(function(g){s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)"/><text x="2" y="'+(Y(g)+4)+'" font-size="10" fill="var(--mut)">'+g+'</text>'});
+ [["mood","var(--acc)"],["anx","var(--warn)"]].forEach(function(p){
+  var pts=[];
+  days.forEach(function(d,i){var v=db[d]&&db[d][p[0]];if(num(v))pts.push([X(i),Y(v)])});
+  if(pts.length>1)s+='<polyline fill="none" stroke="'+p[1]+'" stroke-width="2" points="'+pts.map(function(q){return q[0].toFixed(1)+","+q[1].toFixed(1)}).join(" ")+'"/>';
+  pts.forEach(function(q){s+='<circle cx="'+q[0].toFixed(1)+'" cy="'+q[1].toFixed(1)+'" r="3" fill="'+p[1]+'"/>'});
+ });
+ s+='<text x="'+pl+'" y="'+(H-3)+'" font-size="10" fill="var(--mut)">'+dm(days[0])+'</text><text x="'+(W-pr)+'" y="'+(H-3)+'" text-anchor="end" font-size="10" fill="var(--mut)">'+dm(days[n-1])+'</text></svg>';
+ return s;
+}
+function list(a,empty){return a.length?'<ul>'+a.map(function(x){return '<li>'+x+'</li>'}).join("")+'</ul>':'<p class="m">'+empty+'</p>'}
+function analyze(){
+ var days=range(span),A=$("#an");
+ var rec=days.filter(function(d){var e=db[d];return e&&(num(e.mood)||num(e.anx))});
+ var sits=[];
+ days.forEach(function(d){((db[d]&&db[d].sit)||[]).forEach(function(s){if(s&&(s.t||num(s.l)||s.r||s.c))sits.push({d:d,t:s.t||"",l:s.l,c:s.c,r:s.r})})});
+ if(!rec.length&&!sits.length){A.innerHTML='<div class="c w"><p>За этот период пока нет оценок. Отметьте настроение и тревогу на вкладке «Запись», и здесь появится анализ.</p></div>';return}
+ var mo=vals(days,"mood"),an=vals(days,"anx"),sl=vals(days,"sleep");
+ var st=sitStats(sits);
+ var sl1=["Всего ситуаций: "+st.n+", средний страх: "+f1(st.avgl)+" из 10","Избежал: "+st.o[OUTS[0]]+", сделал через страх: "+st.o[OUTS[1]]+", сделал спокойно: "+st.o[OUTS[2]]];
+ var sl2=st.bycat.map(function(x){return x.c+" — "+x.n+" раз, избежал "+x.av});
+ var sl3=st.hard.map(function(s){return dm(s.d)+": "+(s.t||"без описания")+" (страх "+s.l+(s.r?", "+s.r:"")+")"});
+ var emo=top(days,["emo"],6),body=top(days,["body"],5),th=top(days,["rel","work","life"],6),co=corr(days),wk=weeks(days);
+ var h='<div class="c w"><h2>Динамика</h2><div class="leg"><span style="color:var(--acc)">● настроение</span><span style="color:var(--warn)">● тревога</span></div>'+chart(days)+'</div>';
+ h+='<div class="c"><h2>Средние за период</h2><table><tr><td>Дней с оценками</td><td>'+rec.length+'</td></tr><tr><td>Настроение</td><td>'+f1(avg(mo))+'</td></tr><tr><td>Тревога</td><td>'+f1(avg(an))+'</td></tr><tr><td>Энергия</td><td>'+f1(avg(vals(days,"en")))+'</td></tr><tr><td>Сон, часов</td><td>'+f1(avg(sl))+'</td></tr></table></div>';
+ h+='<div class="c"><h2>По неделям</h2><table><tr><th>Неделя с</th><th>Настр.</th><th>Трев.</th><th>Сон</th></tr>'+wk.map(function(w){return '<tr><td>'+dm(w.m)+'</td><td>'+f1(w.mo)+'</td><td>'+f1(w.an)+'</td><td>'+f1(w.sl)+'</td></tr>'}).join("")+'</table></div>';
+ h+='<div class="c w"><h2>Ситуации, где было страшно</h2>'+(sits.length?list(sl1,"")+(sl2.length?'<p class="m">По типам</p>'+list(sl2,""):"")+(sl3.length?'<p class="m">Самые тяжёлые</p>'+list(sl3.map(esc),""):""):'<p class="m">Ситуации пока не записывались.</p>')+'</div>';
+ h+='<div class="c"><h2>Частые эмоции</h2>'+list(emo,"Эмоции пока не отмечались.")+'</div>';
+ h+='<div class="c"><h2>Частые симптомы в теле</h2>'+list(body,"Симптомы пока не отмечались.")+'</div>';
+ h+='<div class="c"><h2>Частые темы</h2>'+list(th,"Темы пока не отмечались.")+'</div>';
+ h+='<div class="c w"><h2>Совпадения</h2>'+list(co,"Нужно хотя бы по 3 дня с отметкой и без неё, чтобы сравнить.")+'<p class="m">Это совпадения в ваших записях, а не причины. Их стоит обсудить с терапевтом.</p></div>';
+ h+='<div class="c w"><h2>Сводка для терапевта</h2><textarea id="sum" readonly></textarea><button class="act" id="cp">Скопировать</button></div>';
+ A.innerHTML=h;
+ var asks=days.filter(function(d){return db[d]&&db[d].ask&&String(db[d].ask).trim()}).slice(-5).map(function(d){return dm(d)+": "+String(db[d].ask).trim()});
+ var t="Дневник за "+span+" дн. Дней с оценками: "+rec.length+".\nНастроение в среднем: "+f1(avg(mo))+" из 10, тревога: "+f1(avg(an))+" из 10, сон: "+f1(avg(sl))+" ч.\n";
+ if(sits.length){t+="Ситуации страха: "+sl1.join("; ")+".\n";if(sl2.length)t+="По типам: "+sl2.join(", ")+".\n";if(sl3.length)t+="Самые тяжёлые: "+sl3.join("; ")+".\n"}
+ if(emo.length)t+="Частые эмоции: "+emo.join(", ")+".\n";
+ if(body.length)t+="Частые симптомы: "+body.join(", ")+".\n";
+ if(th.length)t+="Частые темы: "+th.join(", ")+".\n";
+ if(co.length)t+="Совпадения (не причины):\n- "+co.join("\n- ")+"\n";
+ if(asks.length)t+="Вопросы к терапевту:\n- "+asks.join("\n- ")+"\n";
+ $("#sum").value=t;
+}
+$("#an").addEventListener("click",function(ev){
+ if(ev.target.id!=="cp")return;
+ var ta=$("#sum"),ok=false;
+ ta.select();
+ try{if(navigator.clipboard){navigator.clipboard.writeText(ta.value);ok=true}else ok=document.execCommand("copy")}
+ catch(e){try{ok=document.execCommand("copy")}catch(e2){}}
+ note(ok?"Скопировано":"Выделите текст и скопируйте вручную");
+});
+$("#seg").addEventListener("click",function(ev){
+ var b=ev.target.closest("button");
+ if(!b)return;
+ span=+b.getAttribute("data-n");
+ all("#seg button").forEach(function(x){x.classList.toggle("on",x===b)});
+ analyze();
+});
+
+/* ---------- вкладки и запуск ---------- */
+function tab(n){
+ $("#pg1").hidden=n!==1;$("#pg2").hidden=n!==2;
+ $("#t1").classList.toggle("on",n===1);$("#t2").classList.toggle("on",n===2);
+ if(n===2)analyze();
+}
+$("#t1").onclick=function(){tab(1)};
+$("#t2").onclick=function(){tab(2)};
+build();
+loadAll(function(){$("#load").hidden=true;load();tab(1)});
+})();
+</script>
+</body>
+</html>

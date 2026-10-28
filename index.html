@@ -122,7 +122,7 @@ document.addEventListener("visibilitychange",function(){
 
 /* ---------- форма ---------- */
 var CARDS=[
-{t:"Настроение и тревога",h:"0 — очень плохо или нет вообще, 10 — отлично или максимум",f:[["r","mood","Настроение"],["r","anx","Тревога"],["r","en","Энергия"]]},
+{t:"Настроение и тревога",h:"Шкала от 1 до 5, где 5 — максимум: настроение 5 — отлично, тревога 5 — очень сильная, энергия 5 — много сил",f:[["r","mood","Настроение"],["r","anx","Тревога"],["r","en","Энергия"]]},
 {t:"Эмоции дня",h:"Отметьте всё, что было",f:[["c","emo",["тревога","грусть","злость","раздражение","стыд","вина","пустота","страх","апатия","спокойствие","радость","интерес"]]]},
 {t:"Тело и сон",f:[["n","sleep","Сколько часов спал"],["c","body",["сердцебиение","напряжение в мышцах","головная боль","ком в горле","одышка","тошнота","усталость","плохой аппетит","переедание","плохой сон"]]]},
 {t:"Тревога: что запустило и что было дальше",w:1,f:[["t","trig","Что случилось или что запустило тревогу"],["t","thought","Какая мысль была в голове"],["t","react","Что я сделал в ответ"]]},
@@ -140,7 +140,7 @@ function build(){
   h+='<section class="c'+(c.w?' w':'')+'"><h2>'+c.t+'</h2>'+(c.h?'<p class="hint">'+c.h+'</p>':'');
   c.f.forEach(function(f){
    var t=f[0],k=f[1],x=f[2];
-   if(t==="r")h+='<div class="r"><label for="i_'+k+'">'+x+'</label><b data-o="'+k+'">–</b><input type="range" id="i_'+k+'" min="0" max="10" data-k="'+k+'"></div>';
+   if(t==="r")h+='<div class="r"><label for="i_'+k+'">'+x+'</label><b data-o="'+k+'">–</b><input type="range" id="i_'+k+'" min="1" max="5" data-k="'+k+'"></div>';
    else if(t==="n")h+='<label for="i_'+k+'">'+x+'</label><input type="number" id="i_'+k+'" min="0" max="24" step="0.5" inputmode="decimal" data-k="'+k+'">';
    else if(t==="t")h+=(x?'<label for="i_'+k+'">'+x+'</label>':'')+'<textarea id="i_'+k+'" maxlength="300" data-k="'+k+'"></textarea>';
    else if(t==="s")h+='<div id="sit"></div><button type="button" class="act" id="addsit">+ Добавить ситуацию</button>';
@@ -161,7 +161,7 @@ function load(){
    var a=e[k]||[];
    el.querySelectorAll("button").forEach(function(b){b.classList.toggle("on",a.indexOf(b.getAttribute("data-v"))>-1)});
   }else if(el.type==="checkbox"){el.checked=!!e[k]}
-  else if(el.type==="range"){el.value=(typeof e[k]==="number")?e[k]:5;out(k,e[k])}
+  else if(el.type==="range"){el.value=(typeof e[k]==="number")?e[k]:3;out(k,e[k])}
   else{el.value=(e[k]!==undefined)?e[k]:""}
  });
  renderSit();
@@ -199,7 +199,7 @@ function renderSit(){
  var a=(db[date]&&db[date].sit)||[],h="";
  a.forEach(function(s,i){
   h+='<div class="sit" data-i="'+i+'"><input type="text" maxlength="100" placeholder="Например: не решился подойти и заговорить" aria-label="Ситуация" data-s="t">'
-   +'<div class="r"><label>Страх, тревога</label><b>'+(typeof s.l==="number"?s.l:"–")+'</b><input type="range" min="0" max="10" data-s="l" aria-label="Уровень страха"></div>'
+   +'<div class="r"><label>Страх, тревога (5 — очень сильный)</label><b>'+(typeof s.l==="number"?s.l:"–")+'</b><input type="range" min="1" max="5" data-s="l" aria-label="Уровень страха"></div>'
    +'<label>Что за ситуация</label>'+chipsHtml("c",CATS)
    +'<label>Чем закончилось</label>'+chipsHtml("r",OUTS)
    +'<button type="button" class="act del" data-del="'+i+'">Удалить</button></div>';
@@ -208,7 +208,7 @@ function renderSit(){
  all("#sit .sit").forEach(function(el){
   var s=a[+el.getAttribute("data-i")];
   el.querySelector('input[type=text]').value=s.t||"";
-  el.querySelector('input[type=range]').value=(typeof s.l==="number")?s.l:5;
+  el.querySelector('input[type=range]').value=(typeof s.l==="number")?s.l:3;
   ["c","r"].forEach(function(f){el.querySelectorAll('[data-s="'+f+'"] button').forEach(function(b){b.classList.toggle("on",s[f]===b.getAttribute("data-v"))})});
  });
  $("#addsit").hidden=a.length>=6;
@@ -282,9 +282,9 @@ function weeks(days){
 function chart(days){
  var W=320,H=140,pl=22,pr=6,pt=8,pb=18,n=days.length;
  function X(i){return pl+(n<2?0:i*(W-pl-pr)/(n-1))}
- function Y(v){return pt+(10-v)*(H-pt-pb)/10}
+ function Y(v){return pt+(5-v)*(H-pt-pb)/4}
  var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="График настроения и тревоги">';
- [0,5,10].forEach(function(g){s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)"/><text x="2" y="'+(Y(g)+4)+'" font-size="10" fill="var(--mut)">'+g+'</text>'});
+ [1,3,5].forEach(function(g){s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)"/><text x="2" y="'+(Y(g)+4)+'" font-size="10" fill="var(--mut)">'+g+'</text>'});
  [["mood","var(--acc)"],["anx","var(--warn)"]].forEach(function(p){
   var pts=[];
   days.forEach(function(d,i){var v=db[d]&&db[d][p[0]];if(num(v))pts.push([X(i),Y(v)])});
@@ -303,7 +303,7 @@ function analyze(){
  if(!rec.length&&!sits.length){A.innerHTML='<div class="c w"><p>За этот период пока нет оценок. Отметьте настроение и тревогу на вкладке «Запись», и здесь появится анализ.</p></div>';return}
  var mo=vals(days,"mood"),an=vals(days,"anx"),sl=vals(days,"sleep");
  var st=sitStats(sits);
- var sl1=["Всего ситуаций: "+st.n+", средний страх: "+f1(st.avgl)+" из 10","Избежал: "+st.o[OUTS[0]]+", сделал через страх: "+st.o[OUTS[1]]+", сделал спокойно: "+st.o[OUTS[2]]];
+ var sl1=["Всего ситуаций: "+st.n+", средний страх: "+f1(st.avgl)+" из 5","Избежал: "+st.o[OUTS[0]]+", сделал через страх: "+st.o[OUTS[1]]+", сделал спокойно: "+st.o[OUTS[2]]];
  var sl2=st.bycat.map(function(x){return x.c+" — "+x.n+" раз, избежал "+x.av});
  var sl3=st.hard.map(function(s){return dm(s.d)+": "+(s.t||"без описания")+" (страх "+s.l+(s.r?", "+s.r:"")+")"});
  var emo=top(days,["emo"],6),body=top(days,["body"],5),th=top(days,["rel","work","life"],6),co=corr(days),wk=weeks(days);
@@ -318,7 +318,7 @@ function analyze(){
  h+='<div class="c w"><h2>Сводка для терапевта</h2><textarea id="sum" readonly></textarea><button class="act" id="cp">Скопировать</button></div>';
  A.innerHTML=h;
  var asks=days.filter(function(d){return db[d]&&db[d].ask&&String(db[d].ask).trim()}).slice(-5).map(function(d){return dm(d)+": "+String(db[d].ask).trim()});
- var t="Дневник за "+span+" дн. Дней с оценками: "+rec.length+".\nНастроение в среднем: "+f1(avg(mo))+" из 10, тревога: "+f1(avg(an))+" из 10, сон: "+f1(avg(sl))+" ч.\n";
+ var t="Дневник за "+span+" дн. Дней с оценками: "+rec.length+".\nНастроение в среднем: "+f1(avg(mo))+" из 5, тревога: "+f1(avg(an))+" из 5, сон: "+f1(avg(sl))+" ч.\n";
  if(sits.length){t+="Ситуации страха: "+sl1.join("; ")+".\n";if(sl2.length)t+="По типам: "+sl2.join(", ")+".\n";if(sl3.length)t+="Самые тяжёлые: "+sl3.join("; ")+".\n"}
  if(emo.length)t+="Частые эмоции: "+emo.join(", ")+".\n";
  if(body.length)t+="Частые симптомы: "+body.join(", ")+".\n";

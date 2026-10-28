@@ -91,7 +91,8 @@ var KEY="diary-v1",db={},date=fmt(new Date()),timers={};
 function loadAll(cb){
  if(cloud){
   cloud.getKeys(function(err,keys){
-   keys=(keys||[]).filter(function(k){return k.indexOf("d:")===0});
+   if(err)note("Не удалось загрузить записи");
+   keys=(keys||[]).filter(function(k){return k.indexOf("d_")===0});
    if(err||!keys.length){cb();return}
    cloud.getItems(keys,function(err2,vals){
     if(!err2&&vals){Object.keys(vals).forEach(function(k){try{db[k.slice(2)]=JSON.parse(vals[k])}catch(e){}})}
@@ -107,18 +108,18 @@ function saveDay(d){
  if(cloud){
   var s=JSON.stringify(db[d]||{});
   if(s.length>4000){note("Запись слишком длинная, сократите тексты");return}
-  cloud.setItem("d:"+d,s,function(){});
+  cloud.setItem("d_"+d,s,function(err,ok){if(err||ok===false)note("Не сохранилось: "+(err||"ошибка"))});
  }else{try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
 }
 function put(k,v){
  var d=date,e=db[d]=db[d]||{};
  e[k]=v;
  clearTimeout(timers[d]);
- timers[d]=setTimeout(function(){saveDay(d)},500);
+ timers[d]=setTimeout(function(){delete timers[d];saveDay(d)},400);
 }
-document.addEventListener("visibilitychange",function(){
- if(document.hidden)Object.keys(timers).forEach(function(d){clearTimeout(timers[d]);saveDay(d)});
-});
+function flush(){Object.keys(timers).forEach(function(d){clearTimeout(timers[d]);delete timers[d];saveDay(d)})}
+document.addEventListener("visibilitychange",function(){if(document.hidden)flush()});
+window.addEventListener("pagehide",flush);
 
 /* ---------- форма ---------- */
 var CARDS=[
